@@ -1,5 +1,8 @@
 package com.redislabs.sa.ot.lstvj;
 
+import io.lettuce.core.Range;
+import io.lettuce.core.RedisClient;
+import io.lettuce.core.api.StatefulRedisConnection;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.connection.RedisConnection;
@@ -23,6 +26,7 @@ public class Main {
     static String KEY_PREFIX = "OT:";
     static JedisConnectionHelper jedisConnectionHelper = null;
     static SpringThingBean springThingBean = new SpringThingBean();
+    static LettuceConnectionHelper lettuceConnectionHelper = null;
 
     public static void main(String [] args){
         boolean bogusBoolean = true;
@@ -82,8 +86,16 @@ public class Main {
                 limitSize = Integer.parseInt(argList.get(index+1));
             }
         }
-        jedisConnectionHelper = new JedisConnectionHelper(JedisConnectionHelper.buildURI(host,port,username,password));
-        springThingBean.configureSpringThingBean(host,port,username,password);
+        URI redisURI = JedisConnectionHelper.buildURI(host,port,username,password);
+        System.out.println(redisURI);
+        boolean shortCircuit = false;
+        if(shortCircuit){
+            return;
+        }
+        lettuceConnectionHelper = new LettuceConnectionHelper(redisURI);
+        jedisConnectionHelper = new JedisConnectionHelper(redisURI);
+        //springThingBean.configureSpringThingBean(host,port,username,password);
+
 
         //Have to do this before the test kicks off!
         JedisPooled jedis = jedisConnectionHelper.getPooledJedis();
@@ -102,6 +114,7 @@ public class Main {
             test.setUseJedis(useJedis);
             test.setJedisConnectionHelper(jedisConnectionHelper);
             test.setSpringThingBean(springThingBean);
+            test.setLettuceConnectionHelper(lettuceConnectionHelper);
             test.init();
             testers.add(test);
         }
@@ -220,6 +233,7 @@ class CommandsTester implements Runnable{
 
     SpringThingBean springThingBean = null;
     JedisConnectionHelper jedisConnectionHelper = null;
+    LettuceConnectionHelper lettuceConnectionHelper = null;
     ArrayList<String> commands = null;
     ArrayList<String> perfTestResults = new ArrayList<>();
     ArrayList<Long> perfTestNumericResults = new ArrayList<>();
@@ -249,7 +263,8 @@ class CommandsTester implements Runnable{
         this.keyPrefix = keyPrefix;
     }
 
-    @Bean
+    public void setLettuceConnectionHelper(LettuceConnectionHelper lettuceConnectionHelper){this.lettuceConnectionHelper = lettuceConnectionHelper;}
+
     public void setSpringThingBean(SpringThingBean springThingBean) { this.springThingBean = springThingBean; }
 
     public void setJedisConnectionHelper(JedisConnectionHelper jedisConnectionHelper) { this.jedisConnectionHelper = jedisConnectionHelper; }
@@ -263,7 +278,7 @@ class CommandsTester implements Runnable{
     }
 
     //call init after all properties are set
-    @Bean
+
     public void init(){
         if(showCommandsInfo){
             System.out.println("COMMANDS TO BE EXECUTED: \n");
@@ -305,38 +320,53 @@ class CommandsTester implements Runnable{
         return perfTestNumericResults;
     }
 
-    @Bean
+
     void executeLettuceCommand() {
-        try(RedisConnection redisConnection = springThingBean.redisConnectionFactory().getConnection()){
-            long startTime = System.currentTimeMillis();
-            int commandIndex = (int) (System.currentTimeMillis() % commands.size());
-            String command = commands.get(commandIndex).split("~")[0].toUpperCase();
-            //System.out.println(command);
-            String argsString = commands.get(commandIndex).split("~")[1];
-            String[] args = argsString.split(",");
-            //System.out.println("Length of args in command is: " + args.length);
-            String[] strarr = new String[args.length];
-            for (int x = 0; x < args.length; x++) {
-                if (args[x].equalsIgnoreCase("numeric")) {
-                    strarr[x] = ("" + System.nanoTime() % System.currentTimeMillis());
-                } else if (args[x].equalsIgnoreCase("string")) {
-                    strarr[x] = ("runner_" + (System.nanoTime() % 2000000));
-                } else if (args[x].equalsIgnoreCase("keyname")) {
-                    strarr[x] = (keyPrefix + "akey:" + (System.nanoTime() % 20000));
-                } else if (args[x].equalsIgnoreCase("zero")) {
-                    strarr[x] = ("" +0);
-                }
+        //try(RedisConnection redisConnection = springThingBean.redisConnectionFactory().getConnection()){
+        StatefulRedisConnection redisConnection = lettuceConnectionHelper.getConnection();
+        long startTime = System.currentTimeMillis();
+        int commandIndex = (int) (System.currentTimeMillis() % commands.size());
+        String command = commands.get(commandIndex).split("~")[0].toUpperCase();
+        //System.out.println(command);
+        String argsString = commands.get(commandIndex).split("~")[1];
+        String[] args = argsString.split(",");
+        //System.out.println("Length of args in command is: " + args.length);
+        String[] strarr = new String[args.length];
+        for (int x = 0; x < args.length; x++) {
+            if (args[x].equalsIgnoreCase("numeric")) {
+                strarr[x] = ("" + System.nanoTime() % System.currentTimeMillis());
+            } else if (args[x].equalsIgnoreCase("string")) {
+                strarr[x] = ("runner_" + (System.nanoTime() % 2000000));
+            } else if (args[x].equalsIgnoreCase("keyname")) {
+                strarr[x] = (keyPrefix + "akey:" + (System.nanoTime() % 20000));
+            } else if (args[x].equalsIgnoreCase("zero")) {
+                strarr[x] = ("" +0);
             }
-            String comdString ="";
-            for(String val:strarr){ // We add each argument - padding them with their length and "\r\n"
-                comdString+="$"+val.length()+"\r\n"+val+"\r\n";
-            }
-            byte[] theThing = comdString.getBytes(StandardCharsets.UTF_8);
-            var result = redisConnection.execute(command,theThing);
-            long duration = (System.currentTimeMillis() - startTime);
-            perfTestResults.add(testInstanceID + ": executed command: " + command + " (with " + result + " results...  Execution took: " + duration + " milliseconds");
-            perfTestNumericResults.add(duration);
         }
+        Object result = null;
+        switch (command){
+            case "ZADD":
+                System.out.println("\nZADD LETTUCE");
+                result = redisConnection.sync().zadd(strarr[0],Double.parseDouble(strarr[1]),strarr[2]);
+                break;
+            case "ZRANDMEMBER":
+                System.out.println("\nZRANDMEMBER LETTUCE");
+                result = redisConnection.sync().zrandmember(strarr[0]);
+                break;
+            case "ZREVRANGEBYSCORE":
+                System.out.println("\nZREVRANGEBYSCORE LETTUCE");
+                result = redisConnection.sync().zrevrangebyscore(strarr[0],Range.create(new Double(0),new Double(System.nanoTime() % System.currentTimeMillis())));
+                break;
+            case "ZRANGEBYSCORE":
+                System.out.println("\nZRANGEBYSCORE LETTUCE");
+                result = redisConnection.sync().zrangebyscore(strarr[0],Range.create(new Double(System.nanoTime() % System.currentTimeMillis()),new Double(0)));
+                break;
+            default:
+                System.out.println("no match for that command has been assigned in Owen's code");
+        }
+        long duration = (System.currentTimeMillis() - startTime);
+        perfTestResults.add(testInstanceID + ": executed command: " + command + " (with " + result + " results...  Execution took: " + duration + " milliseconds");
+        perfTestNumericResults.add(duration);
     }
 
     void executeJedisCommand(){
@@ -455,3 +485,21 @@ class JedisConnectionHelper{
     }
 }
 
+/*
+* This class provides connections to Redis using the Lettuce Library
+*/
+class LettuceConnectionHelper {
+
+    RedisClient redisClient = null;
+    StatefulRedisConnection<String, String> connection = null;
+
+    StatefulRedisConnection<String, String> getConnection(){
+        return this.connection;
+    }
+
+    public LettuceConnectionHelper(URI redisURI){
+        redisClient = RedisClient.create(redisURI.toString());
+        connection = redisClient.connect();
+    }
+
+}

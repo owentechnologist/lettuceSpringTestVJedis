@@ -48,7 +48,6 @@ public class SpringThingBean {
         this.password=password;
     }
 
-    @Bean
     public RedisConnectionFactory redisConnectionFactory() {
         LettuceConnectionFactory connectionFactory = null;
         RedisStandaloneConfiguration redisStandaloneConfiguration = new RedisStandaloneConfiguration(redisHost, redisPort);
@@ -81,7 +80,7 @@ public class SpringThingBean {
         return connectionFactory;
 
     }
-    @Bean
+
     void setValidateConnection(LettuceConnectionFactory connectionFactory){
         System.out.println("validating LettuceConnectionFactory connection... [true]");
         connectionFactory.setValidateConnection(true);
