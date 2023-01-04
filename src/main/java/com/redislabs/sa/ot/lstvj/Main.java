@@ -4,8 +4,6 @@ import io.lettuce.core.Range;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
-import org.springframework.context.annotation.Bean;
-import org.springframework.data.redis.connection.RedisConnection;
 import redis.clients.jedis.*;
 import redis.clients.jedis.providers.PooledConnectionProvider;
 import redis.clients.jedis.util.SafeEncoder;
@@ -13,7 +11,6 @@ import redis.clients.jedis.util.SafeEncoder;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 
@@ -27,10 +24,10 @@ public class Main {
     static JedisConnectionHelper jedisConnectionHelper = null;
     static SpringThingBean springThingBean = new SpringThingBean();
     static LettuceConnectionHelper lettuceConnectionHelper = null;
+    static boolean useJedis = true;
 
     public static void main(String [] args){
-        boolean bogusBoolean = true;
-        boolean useJedis = true;
+
         String host = "192.168.1.21";
         int port = 12000;
         String username = "default";
@@ -88,10 +85,6 @@ public class Main {
         }
         URI redisURI = JedisConnectionHelper.buildURI(host,port,username,password);
         System.out.println(redisURI);
-        boolean shortCircuit = false;
-        if(shortCircuit){
-            return;
-        }
         lettuceConnectionHelper = new LettuceConnectionHelper(redisURI);
         jedisConnectionHelper = new JedisConnectionHelper(redisURI);
         //springThingBean.configureSpringThingBean(host,port,username,password);
@@ -154,7 +147,7 @@ public class Main {
             }
         }
         long totalResultsCaptured = jedis.zcard(ALL_RESULTS_SORTED_SET);
-        System.out.println("\nAcross "+totalResultsCaptured+" unique results captured, latencies look like this:");
+        System.out.println("\n--usejedis "+useJedis+" :  Across "+totalResultsCaptured+" unique results captured, latencies look like this:");
 
         System.out.println("Lowest Recorded roundtrip: "+jedis.zrange(ALL_RESULTS_SORTED_SET,0,0));
         long millis05Index = (long) (totalResultsCaptured*.05);
@@ -172,7 +165,7 @@ public class Main {
         long millis95Index = (long) (totalResultsCaptured*.95);
         System.out.println("95th percentile: "+jedis.zrange(ALL_RESULTS_SORTED_SET,millis95Index,millis95Index));
         System.out.println("Highest Recorded roundtrip: "+jedis.zrange(ALL_RESULTS_SORTED_SET,(totalResultsCaptured-1),(totalResultsCaptured-1)));
-        System.out.println("\nPlease check the --> slowlog <-- on your Redis database to determine if any slowness is serverside or driven by client or network limits\n\n");
+        System.out.println("\n--usejedis "+useJedis+" :  Please check the --> slowlog <-- on your Redis database to determine if any slowness is serverside or driven by client or network limits\n\n");
 
     }
 
@@ -198,7 +191,7 @@ public class Main {
                 if (jedis.exists(PERFORMANCE_TEST_THREAD_COUNTER)) {
                     int threadsCompleted = Integer.parseInt(jedis.get(PERFORMANCE_TEST_THREAD_COUNTER));
                     if (threadsCompleted > 0) {
-                        System.out.println("\nRESULTS COMING IN!-->>  " + threadsCompleted + " threads have completed their processing...");
+                        System.out.println("\n--usejedis "+useJedis+" :  RESULTS COMING IN!-->>  " + threadsCompleted + " threads have completed their processing...");
                     } else {
                         System.out.print(".");
                     }

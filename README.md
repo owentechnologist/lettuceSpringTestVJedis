@@ -2,14 +2,14 @@
 
 ### To performance test only the Lettuce Client code:
 ``` 
-mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host1 192.168.1.21 --port 18386 --querycountperthread 2 --numberofthreads 2 --usejedis false"
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host1 192.168.1.21 --port 18386 --querycountperthread 2000 --numberofthreads 20 --usejedis false"
 ```
 
 ### To performance test only the Jedis Client code:
 ``` 
 mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--host1 192.168.1.21 --port 18386 --querycountperthread 2000 --numberofthreads 3 --usejedis true"
 ```
-
+#### <em>Toggle the last argument [usejedis] from true to false to compare performance </em>
 ### Here is a sample run:
 
 ``` 
